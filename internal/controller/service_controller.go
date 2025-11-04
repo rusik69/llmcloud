@@ -39,7 +39,7 @@ type ServiceReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	// Fetch the Service instance
 	service := &llmcloudv1alpha1.Service{}
@@ -47,11 +47,11 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling Service", "name", service.Name, "namespace", service.Namespace)
+	logger.Info("Reconciling Service", "name", service.Name, "namespace", service.Namespace)
 
 	// Update status to Running if not set
 	if service.Status.Phase == "" {
-		service.Status.Phase = "Pending"
+		service.Status.Phase = llmcloudv1alpha1.ServicePhasePending
 		if err := r.Status().Update(ctx, service); err != nil {
 			return ctrl.Result{}, err
 		}

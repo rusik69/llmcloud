@@ -48,7 +48,8 @@ func NewDeployCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&sshHost, "ssh-host", os.Getenv("SSH_HOST"), "SSH host (user@hostname)")
 	cmd.Flags().StringVar(&k0sVersion, "k0s-version", "v1.29.1+k0s.0", "k0s version to install")
-	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", filepath.Join(os.Getenv("HOME"), ".kube", "config-llmcloud"), "Kubeconfig path")
+	defaultKubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config-llmcloud")
+	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", defaultKubeconfig, "Kubeconfig path")
 	cmd.Flags().StringVar(&storageDevice, "storage-device", "/dev/sda", "Block device for storage (VMs, containers, data)")
 
 	return cmd
@@ -128,7 +129,8 @@ func setupStorageDevice() error {
 	// Add to fstab for persistent mount
 	fmt.Println("Adding to /etc/fstab for persistent mount...")
 	fstabEntry := fmt.Sprintf("%s /mnt ext4 defaults 0 2", storageDevice)
-	fstabCmd := fmt.Sprintf("sudo grep -q '%s' /etc/fstab || echo '%s' | sudo tee -a /etc/fstab", storageDevice, fstabEntry)
+	fstabCheck := fmt.Sprintf("sudo grep -q '%s' /etc/fstab", storageDevice)
+	fstabCmd := fmt.Sprintf("%s || echo '%s' | sudo tee -a /etc/fstab", fstabCheck, fstabEntry)
 	_ = execCommand("ssh", sshHost, fstabCmd)
 
 	// Create directories for different storage types
@@ -223,7 +225,8 @@ func deployK0s() error {
 		fmt.Println("Installing k3s...")
 
 		// Install k3s with custom data directory and KubeVirt-friendly settings
-		installCmd := fmt.Sprintf(`curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--data-dir=/mnt/k3s --disable traefik --disable servicelb --kube-proxy-arg=conntrack-max-per-core=0" sh -`)
+		k3sExec := "--data-dir=/mnt/k3s --disable traefik --disable servicelb --kube-proxy-arg=conntrack-max-per-core=0"
+		installCmd := fmt.Sprintf(`curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="%s" sh -`, k3sExec)
 		if err := execCommand("ssh", sshHost, installCmd); err != nil {
 			return fmt.Errorf("failed to install k3s: %w", err)
 		}
@@ -254,7 +257,9 @@ func deployK0s() error {
 		return fmt.Errorf("failed to write kubeconfig: %w", err)
 	}
 
-	os.Setenv("KUBECONFIG", kubeconfig)
+	if err := os.Setenv("KUBECONFIG", kubeconfig); err != nil {
+		return fmt.Errorf("failed to set KUBECONFIG: %w", err)
+	}
 
 	// Wait for cluster to be ready
 	if err := waitForCluster(); err != nil {
@@ -297,7 +302,9 @@ func waitForCluster() error {
 	}
 
 	// Remove control-plane taint
-	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "taint", "nodes", "--all", "node-role.kubernetes.io/control-plane:NoSchedule-")
+	taintKey := "node-role.kubernetes.io/control-plane:NoSchedule-"
+	taintCmd := fmt.Sprintf("kubectl --kubeconfig %s taint nodes --all %s", kubeconfig, taintKey)
+	_ = execCommand("sh", "-c", taintCmd)
 
 	return nil
 }
@@ -307,10 +314,12 @@ func installDependencies() error {
 
 	// Install KubeVirt v1.6.0 (latest version as of 2025)
 	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "create", "namespace", "kubevirt")
-	if err := execCommand("kubectl", "--kubeconfig", kubeconfig, "apply", "-f", "https://github.com/kubevirt/kubevirt/releases/download/v1.6.0/kubevirt-operator.yaml"); err != nil {
+	kubevirtOperatorURL := "https://github.com/kubevirt/kubevirt/releases/download/v1.6.0/kubevirt-operator.yaml"
+	if err := execCommand("kubectl", "--kubeconfig", kubeconfig, "apply", "-f", kubevirtOperatorURL); err != nil {
 		return err
 	}
-	if err := execCommand("kubectl", "--kubeconfig", kubeconfig, "apply", "-f", "https://github.com/kubevirt/kubevirt/releases/download/v1.6.0/kubevirt-cr.yaml"); err != nil {
+	kubevirtCRURL := "https://github.com/kubevirt/kubevirt/releases/download/v1.6.0/kubevirt-cr.yaml"
+	if err := execCommand("kubectl", "--kubeconfig", kubeconfig, "apply", "-f", kubevirtCRURL); err != nil {
 		return err
 	}
 
@@ -320,11 +329,18 @@ func installDependencies() error {
 
 	// Wait for KubeVirt to be ready then patch for KVM support
 	time.Sleep(5 * time.Second)
-	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "-n", "kubevirt", "patch", "kubevirt", "kubevirt", "--type=merge", "-p", `{"spec":{"configuration":{"developerConfiguration":{"featureGates":["HardwareVirtualization"]}}}}`)
+	kubevirtPatch := `{"spec":{"configuration":{"developerConfiguration":{"featureGates":["HardwareVirtualization"]}}}}`
+	kubevirtPatchArgs := []string{
+		"--kubeconfig", kubeconfig, "-n", "kubevirt", "patch", "kubevirt", "kubevirt",
+		"--type=merge", "-p", kubevirtPatch,
+	}
+	_ = execCommand("kubectl", kubevirtPatchArgs...)
 
 	// Install CDI v1.61.0 (latest version as of 2025)
-	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "create", "-f", "https://github.com/kubevirt/containerized-data-importer/releases/download/v1.61.0/cdi-operator.yaml")
-	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "create", "-f", "https://github.com/kubevirt/containerized-data-importer/releases/download/v1.61.0/cdi-cr.yaml")
+	cdiOperatorURL := "https://github.com/kubevirt/containerized-data-importer/releases/download/v1.61.0/cdi-operator.yaml"
+	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "create", "-f", cdiOperatorURL)
+	cdiCRURL := "https://github.com/kubevirt/containerized-data-importer/releases/download/v1.61.0/cdi-cr.yaml"
+	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "create", "-f", cdiCRURL)
 
 	// Wait for CDI to be ready and create CDIConfig
 	time.Sleep(10 * time.Second)
@@ -340,22 +356,30 @@ spec:
 	cdiConfigFile := "/tmp/cdiconfig.yaml"
 	if err := os.WriteFile(cdiConfigFile, []byte(cdiConfigYAML), 0600); err == nil {
 		_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "apply", "-f", cdiConfigFile)
-		os.Remove(cdiConfigFile)
+		_ = os.Remove(cdiConfigFile) // Best effort cleanup
 	}
 
 	// Install local-path provisioner
-	if err := execCommand("kubectl", "--kubeconfig", kubeconfig, "apply", "-f", "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.28/deploy/local-path-storage.yaml"); err != nil {
+	localPathURL := "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.28/deploy/local-path-storage.yaml"
+	localPathArgs := []string{"--kubeconfig", kubeconfig, "apply", "-f", localPathURL}
+	if err := execCommand("kubectl", localPathArgs...); err != nil {
 		return err
 	}
 
 	// Configure local-path provisioner to use /mnt/vm-disks
 	fmt.Println("Configuring local-path provisioner to use /mnt/vm-disks...")
 	time.Sleep(5 * time.Second) // Wait for provisioner to be created
-	patchCmd := `{"data":{"config.json":"{\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/mnt/vm-disks\"]}]}"}}`
-	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "-n", "local-path-storage", "patch", "configmap", "local-path-config", "-p", patchCmd)
+	patchData := `{"nodePathMap":[{"node":"DEFAULT_PATH_FOR_NON_LISTED_NODES","paths":["/mnt/vm-disks"]}]}`
+	patchCmd := fmt.Sprintf(`{"data":{"config.json":"%s"}}`, patchData)
+	patchArgs := []string{
+		"--kubeconfig", kubeconfig, "-n", "local-path-storage", "patch", "configmap",
+		"local-path-config", "-p", patchCmd,
+	}
+	_ = execCommand("kubectl", patchArgs...)
 
 	// Restart local-path-provisioner to apply changes
-	_ = execCommand("kubectl", "--kubeconfig", kubeconfig, "-n", "local-path-storage", "rollout", "restart", "deployment/local-path-provisioner")
+	restartArgs := []string{"--kubeconfig", kubeconfig, "-n", "local-path-storage", "rollout", "restart", "deployment/local-path-provisioner"}
+	_ = execCommand("kubectl", restartArgs...)
 
 	fmt.Println("✓ Dependencies installed")
 	return nil
@@ -379,7 +403,9 @@ func buildFrontend() error {
 	}
 
 	// Copy static files
-	os.MkdirAll("internal/api/static", 0755)
+	if err := os.MkdirAll("internal/api/static", 0755); err != nil {
+		return fmt.Errorf("failed to create static directory: %w", err)
+	}
 	if err := exec.Command("cp", "-r", "static/", "internal/api/static/").Run(); err != nil {
 		fmt.Println("⚠ Failed to copy static files")
 	}
@@ -392,7 +418,9 @@ func deployOperator() error {
 	fmt.Println("==> Building and deploying operator")
 
 	// Build operator binary
-	os.MkdirAll("bin", 0755)
+	if err := os.MkdirAll("bin", 0755); err != nil {
+		return fmt.Errorf("failed to create bin directory: %w", err)
+	}
 	buildCmd := exec.Command("go", "build", "-o", "bin/manager-linux", "cmd/main.go")
 	buildCmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
 	if err := buildCmd.Run(); err != nil {
@@ -414,7 +442,8 @@ func deployOperator() error {
 	if err := execCommand("scp", "bin/manager-linux", sshHost+":/tmp/manager"); err != nil {
 		return err
 	}
-	if err := execCommand("ssh", sshHost, "sudo mv /tmp/manager /opt/llmcloud-operator/manager && sudo chmod +x /opt/llmcloud-operator/manager"); err != nil {
+	mvCmd := "sudo mv /tmp/manager /opt/llmcloud-operator/manager && sudo chmod +x /opt/llmcloud-operator/manager"
+	if err := execCommand("ssh", sshHost, mvCmd); err != nil {
 		return err
 	}
 
@@ -439,13 +468,15 @@ Environment="KUBECONFIG=/opt/llmcloud-operator/kubeconfig"
 [Install]
 WantedBy=multi-user.target`
 
-	serviceCmd := fmt.Sprintf("echo '%s' | sudo tee /etc/systemd/system/llmcloud-operator.service > /dev/null", serviceContent)
+	serviceCmd := fmt.Sprintf("echo '%s' | sudo tee /etc/systemd/system/llmcloud-operator.service > /dev/null",
+		serviceContent)
 	if err := execCommand("ssh", sshHost, serviceCmd); err != nil {
 		return err
 	}
 
 	// Start service
-	if err := execCommand("ssh", sshHost, "sudo systemctl daemon-reload && sudo systemctl enable llmcloud-operator && sudo systemctl start llmcloud-operator"); err != nil {
+	startCmd := "sudo systemctl daemon-reload && sudo systemctl enable llmcloud-operator && sudo systemctl start llmcloud-operator"
+	if err := execCommand("ssh", sshHost, startCmd); err != nil {
 		return err
 	}
 
@@ -519,7 +550,9 @@ spec:
 	// Save credentials
 	credFile := ".root-credentials"
 	credContent := fmt.Sprintf("Username: root\nPassword: %s\n", password)
-	os.WriteFile(credFile, []byte(credContent), 0600)
+	if err := os.WriteFile(credFile, []byte(credContent), 0600); err != nil {
+		fmt.Printf("⚠ Failed to save credentials to %s: %v\n", credFile, err)
+	}
 	fmt.Printf("\n✓ Credentials saved to: %s\n", credFile)
 
 	return nil

@@ -39,7 +39,7 @@ type LLMModelReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *LLMModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	// Fetch the LLMModel instance
 	model := &llmcloudv1alpha1.LLMModel{}
@@ -47,11 +47,11 @@ func (r *LLMModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling LLMModel", "name", model.Name, "namespace", model.Namespace)
+	logger.Info("Reconciling LLMModel", "name", model.Name, "namespace", model.Namespace)
 
 	// Update status to Running if not set
 	if model.Status.Phase == "" {
-		model.Status.Phase = "Pending"
+		model.Status.Phase = llmcloudv1alpha1.LLMModelPhasePending
 		if err := r.Status().Update(ctx, model); err != nil {
 			return ctrl.Result{}, err
 		}

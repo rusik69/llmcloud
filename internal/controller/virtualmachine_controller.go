@@ -279,7 +279,7 @@ func (r *VirtualMachineReconciler) updateVMStatusFromVMI(ctx context.Context, vm
 	err := r.Get(ctx, client.ObjectKey{Name: vm.Name, Namespace: vm.Namespace}, vmi)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			vm.Status.Phase = "Pending"
+			vm.Status.Phase = llmcloudv1alpha1.PhasePending
 			vm.Status.Ready = false
 			return r.Status().Update(ctx, vm)
 		}

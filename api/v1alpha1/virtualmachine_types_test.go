@@ -83,7 +83,7 @@ func TestVirtualMachineStatus(t *testing.T) {
 		IPAddress: "10.244.0.5",
 	}
 
-	if status.Phase != "Running" {
+	if status.Phase != PhaseRunning {
 		t.Errorf("Expected phase 'Running', got '%s'", status.Phase)
 	}
 

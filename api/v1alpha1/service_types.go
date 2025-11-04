@@ -20,6 +20,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Service phase constants
+const (
+	ServicePhasePending = "Pending"
+)
+
 // ServiceSpec defines the desired state of Service
 type ServiceSpec struct {
 	// Type is the type of service (e.g., "api", "web", "worker")

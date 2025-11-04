@@ -20,6 +20,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// VirtualMachine phase constants
+const (
+	PhaseRunning = "Running"
+	PhasePending = "Pending"
+)
+
 // VirtualMachineSpec defines the desired state of VirtualMachine
 type VirtualMachineSpec struct {
 	// CPUs is the number of CPUs for the VM

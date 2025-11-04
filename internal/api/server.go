@@ -121,13 +121,19 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "index.html not found", http.StatusInternalServerError)
 			return
 		}
-		defer indexFile.Close()
+		defer func() {
+			if err := indexFile.Close(); err != nil {
+				log.FromContext(r.Context()).Error(err, "failed to close index file")
+			}
+		}()
 
 		stat, _ := indexFile.Stat()
 		http.ServeContent(w, r, "index.html", stat.ModTime(), indexFile.(io.ReadSeeker))
 		return
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		log.FromContext(r.Context()).Error(err, "failed to close file")
+	}
 
 	// File exists, serve it
 	fileServer := http.FileServer(http.FS(staticFS))
@@ -309,7 +315,9 @@ func (s *Server) handleResource(ctx context.Context, w http.ResponseWriter, r *h
 
 func (s *Server) writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		http.Error(w, "failed to encode JSON", http.StatusInternalServerError)
+	}
 }
 
 func splitPath(path string) []string {

@@ -20,6 +20,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// LLMModel phase constants
+const (
+	LLMModelPhasePending = "Pending"
+)
+
 // LLMModelSpec defines the desired state of LLMModel
 type LLMModelSpec struct {
 	// ModelName is the name of the model (e.g., "llama2", "mistral")
