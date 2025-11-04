@@ -48,6 +48,8 @@ make deploy SSH_HOST=user@host STORAGE_DEVICE=/dev/nvme0n1
 make dev          # Run operator locally with hot reload
 make build        # Build operator binary (bin/manager)
 make test         # Run unit tests
+make lint         # Run golangci-lint
+make lint-fix     # Run golangci-lint with auto-fix
 make clean        # Clean build artifacts
 ```
 
@@ -164,6 +166,7 @@ make tools          # Install all development tools
 make kustomize      # Download kustomize
 make controller-gen # Download controller-gen
 make setup-envtest  # Setup envtest
+make golangci-lint  # Download golangci-lint
 ```
 
 ## Common Workflows

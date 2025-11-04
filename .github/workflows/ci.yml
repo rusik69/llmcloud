@@ -20,10 +20,11 @@ jobs:
       - name: Tidy dependencies
         run: go mod tidy
 
+      - name: Install tools
+        run: make tools
+
       - name: Lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.4.0
+        run: make lint
 
       - name: Unit Tests with Coverage
         run: |

@@ -21,11 +21,13 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 
 # Tool versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 ENVTEST_K8S_VERSION ?= 1.34
+GOLANGCI_LINT_VERSION ?= v2.4.0
 
 ##@ General
 
@@ -53,6 +55,14 @@ build: ## Build operator binary
 .PHONY: test
 test: setup-envtest ## Run unit tests
 	@KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+
+.PHONY: lint
+lint: $(GOLANGCI_LINT) ## Run golangci-lint
+	@$(GOLANGCI_LINT) run
+
+.PHONY: lint-fix
+lint-fix: $(GOLANGCI_LINT) ## Run golangci-lint with auto-fix
+	@$(GOLANGCI_LINT) run --fix
 
 .PHONY: clean
 clean: ## Clean build artifacts
@@ -126,7 +136,7 @@ docker-buildx-frontend: ## Build and push docker image for the frontend for cros
 ##@ Tools
 
 .PHONY: tools
-tools: $(KUSTOMIZE) $(CONTROLLER_GEN) $(ENVTEST) ## Install all tools
+tools: $(KUSTOMIZE) $(CONTROLLER_GEN) $(ENVTEST) $(GOLANGCI_LINT) ## Install all tools
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE)
@@ -146,6 +156,13 @@ setup-envtest: envtest
 envtest: $(ENVTEST)
 $(ENVTEST): $(LOCALBIN)
 	@GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT)
+$(GOLANGCI_LINT): $(LOCALBIN)
+	@echo "Installing golangci-lint@$(GOLANGCI_LINT_VERSION)"
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+	@$(GOLANGCI_LINT) version
 
 define go-install-tool
 @[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
