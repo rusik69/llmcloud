@@ -1,0 +1,9 @@
+## Append samples of your project ##
+resources:
+- llmcloud_v1alpha1_project.yaml
+- llmcloud_v1alpha1_virtualmachine.yaml
+- llmcloud_v1alpha1_llmmodel.yaml
+- llmcloud_v1alpha1_service.yaml
+- llmcloud_v1alpha1_node.yaml
+- llmcloud_v1alpha1_user.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

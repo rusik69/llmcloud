@@ -1,0 +1,77 @@
+{
+	"name": "LLMCloud Operator",
+	"image": "mcr.microsoft.com/devcontainers/go:1.24",
+	
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"version": "latest",
+			"dockerDashComposeVersion": "v2"
+		},
+		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+			"version": "latest",
+			"helm": "latest",
+			"minikube": "none"
+		},
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "20"
+		}
+	},
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.go",
+				"ms-kubernetes-tools.vscode-kubernetes-tools",
+				"redhat.vscode-yaml",
+				"ms-vscode.makefile-tools",
+				"vue.volar",
+				"bradlc.vscode-tailwindcss",
+				"eamodio.gitlens"
+			],
+			"settings": {
+				"go.useLanguageServer": true,
+				"go.gopath": "/go",
+				"go.goroot": "/usr/local/go",
+				"go.testFlags": ["-v"],
+				"go.toolsManagement.checkForUpdates": "local",
+				"go.lintTool": "golangci-lint",
+				"go.lintOnSave": "workspace",
+				"files.exclude": {
+					"**/bin": true,
+					"**/node_modules": true
+				}
+			}
+		}
+	},
+
+	"forwardPorts": [8080, 3000, 8081],
+	"portsAttributes": {
+		"8080": {
+			"label": "Operator API/UI",
+			"onAutoForward": "notify"
+		},
+		"3000": {
+			"label": "Frontend Dev Server",
+			"onAutoForward": "notify"
+		},
+		"8081": {
+			"label": "Health Probe",
+			"onAutoForward": "ignore"
+		}
+	},
+
+	"postCreateCommand": "go mod download && cd web && npm install",
+	
+	"remoteUser": "vscode",
+	"remoteEnv": {
+		"KUBECONFIG": "${containerWorkspaceFolder}/.kube/config"
+	},
+
+	"mounts": [
+		"source=/var/run/docker.sock,target=/var/run/docker-host.sock,type=bind"
+	],
+
+	"runArgs": [
+		"--privileged"
+	]
+}

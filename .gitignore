@@ -1,0 +1,98 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.a
+*.o
+bin/
+bin/*
+!bin/.gitkeep
+Dockerfile.cross
+web/Dockerfile.cross
+
+# Go binaries
+*.test
+main
+manager
+llmcloud-operator
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+cover.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# Build artifacts
+static/
+internal/api/static/
+web/node_modules/
+web/dist/
+
+# Kubernetes Generated files - skip generated files, except for vendored files
+!vendor/**/zz_generated.*
+
+# Credentials and secrets
+*.env
+*.env.local
+*.env.*.local
+.env
+.env.*
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials*
+secret*
+secrets*
+*.secret
+*.credentials
+*.token
+*.password
+config.local.*
+*_local.yaml
+*_local.yml
+*_local.json
+*_local.toml
+.kubeconfig
+kubeconfig*
+*_kubeconfig
+
+# SSH keys (private keys only)
+*.rsa
+*.dsa
+*.ecdsa
+*.ed25519
+id_rsa
+id_rsa.*
+id_dsa
+id_dsa.*
+id_ecdsa
+id_ecdsa.*
+id_ed25519
+id_ed25519.*
+known_hosts
+
+# API keys and tokens
+*.api_key
+*.apikey
+*.access_token
+*.refresh_token
+
+# Editor and IDE paraphernalia
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+*.orig
+*.rej
+.root-credentials
