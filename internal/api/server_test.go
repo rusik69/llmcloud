@@ -101,7 +101,12 @@ func TestHandleProjectsPost(t *testing.T) {
 
 	project := llmcloudv1alpha1.Project{
 		ObjectMeta: metav1.ObjectMeta{Name: "new-project"},
-		Spec:       llmcloudv1alpha1.ProjectSpec{Description: "New project"},
+		Spec: llmcloudv1alpha1.ProjectSpec{
+			Description: "New project",
+			Members: []llmcloudv1alpha1.ProjectMember{
+				{Username: "testuser", Role: "owner"},
+			},
+		},
 	}
 
 	body, _ := json.Marshal(project)
@@ -111,7 +116,7 @@ func TestHandleProjectsPost(t *testing.T) {
 	s.handleProjects(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status OK, got %d", w.Code)
+		t.Errorf("Expected status OK, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }
 

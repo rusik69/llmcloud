@@ -51,7 +51,12 @@ var _ = Describe("User Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: llmcloudv1alpha1.UserSpec{
+						Username:     "testuser",
+						Email:        "test@example.com",
+						PasswordHash: "$2a$10$test",
+						IsAdmin:      false,
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

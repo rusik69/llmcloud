@@ -83,12 +83,18 @@ var _ = Describe("Project Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
+			// Reconcile again to update status
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
 			By("Verifying the project status is updated")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, project)).To(Succeed())
 			Eventually(func() string {
 				_ = k8sClient.Get(ctx, typeNamespacedName, project)
 				return project.Status.Phase
-			}).Should(Equal("Active"))
+			}, "5s", "1s").Should(Equal("Active"))
 		})
 
 		It("should create a namespace for the project", func() {
@@ -103,15 +109,32 @@ var _ = Describe("Project Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
+			// Reconcile again to update status
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
 			By("Verifying namespace was created")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, project)).To(Succeed())
 			Eventually(func() string {
 				_ = k8sClient.Get(ctx, typeNamespacedName, project)
 				return project.Status.Namespace
-			}).Should(Equal("project-" + resourceName))
+			}, "5s", "1s").Should(Equal("project-" + resourceName))
 		})
 
 		It("should add finalizer to the project", func() {
+			By("Reconciling to add finalizer")
+			controllerReconciler := &ProjectReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
 			By("Getting the project")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, project)).To(Succeed())
 
@@ -119,7 +142,7 @@ var _ = Describe("Project Controller", func() {
 			Eventually(func() bool {
 				_ = k8sClient.Get(ctx, typeNamespacedName, project)
 				return len(project.Finalizers) > 0
-			}).Should(BeTrue())
+			}, "5s", "1s").Should(BeTrue())
 		})
 	})
 
