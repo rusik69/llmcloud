@@ -27,7 +27,8 @@ coverage.html
 go.work
 
 # Build artifacts
-static/
+static/*
+!static/.gitkeep
 internal/api/static/
 web/node_modules/
 web/dist/
