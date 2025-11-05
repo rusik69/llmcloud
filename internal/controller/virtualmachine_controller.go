@@ -51,19 +51,6 @@ const (
 	vmFinalizer = "llmcloud.llmcloud.io/vm-finalizer"
 )
 
-var (
-	vmGVR = schema.GroupVersionResource{
-		Group:    "kubevirt.io",
-		Version:  "v1",
-		Resource: "virtualmachines",
-	}
-	vmiGVR = schema.GroupVersionResource{
-		Group:    "kubevirt.io",
-		Version:  "v1",
-		Resource: "virtualmachineinstances",
-	}
-)
-
 func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 

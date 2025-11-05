@@ -60,56 +60,47 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	fmt.Printf("==> Uninstalling from %s\n", sshHost)
 
 	// Stop operator service
-	if err := stopOperator(); err != nil {
-		fmt.Printf("⚠ Warning: failed to stop operator: %v\n", err)
-	}
+	stopOperator()
 
 	// Remove finalizers and delete resources
-	if err := cleanupResources(); err != nil {
-		fmt.Printf("⚠ Warning: failed to cleanup resources: %v\n", err)
-	}
+	cleanupResources()
 
 	// Cleanup operator files
-	if err := cleanupOperatorFiles(); err != nil {
-		fmt.Printf("⚠ Warning: failed to cleanup operator files: %v\n", err)
-	}
+	cleanupOperatorFiles()
 
 	// Uninstall k0s if requested
 	if uninstallK0s {
-		if err := uninstallK0sCluster(); err != nil {
-			return fmt.Errorf("failed to uninstall k0s: %w", err)
-		}
+		uninstallK0sCluster()
 	}
 
 	fmt.Println("\n✓ Uninstall completed successfully!")
 	return nil
 }
 
-func stopOperator() error {
+func stopOperator() {
 	fmt.Println("Stopping operator service...")
 
-	_ = execCommand("ssh", sshHost, "sudo systemctl stop llmcloud-operator 2>/dev/null || true")
-	_ = execCommand("ssh", sshHost, "sudo systemctl disable llmcloud-operator 2>/dev/null || true")
-	_ = execCommand("ssh", sshHost, "sudo pkill -f llmcloud-operator || true")
+	_ = execCommand(sshHost, "sudo systemctl stop llmcloud-operator 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo systemctl disable llmcloud-operator 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo pkill -f llmcloud-operator || true")
 
 	fmt.Println("✓ Operator stopped")
-	return nil
 }
 
-func cleanupResources() error {
+func cleanupResources() {
 	fmt.Println("Cleaning up Kubernetes resources...")
 
 	// Check if kubeconfig exists
 	if _, err := os.Stat(kubeconfig); os.IsNotExist(err) {
 		fmt.Println("⚠ Kubeconfig not found, skipping resource cleanup")
-		return nil
+		return
 	}
 
 	// Load kubeconfig
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		fmt.Printf("⚠ Failed to load kubeconfig: %v, skipping resource cleanup\n", err)
-		return nil
+		return
 	}
 
 	// Set timeout for API server connection
@@ -118,24 +109,18 @@ func cleanupResources() error {
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		fmt.Printf("⚠ Failed to create kubernetes client: %v, skipping resource cleanup\n", err)
-		return nil
+		return
 	}
 
-	// Use context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	// Remove finalizers from projects
 	fmt.Println("Removing finalizers from projects...")
-	if err := removeFinalizers(ctx, "projects"); err != nil {
-		fmt.Printf("⚠ Warning: failed to remove project finalizers: %v\n", err)
-	}
+	removeFinalizers("projects")
 
 	// Remove finalizers from users
 	fmt.Println("Removing finalizers from users...")
-	if err := removeFinalizers(ctx, "users"); err != nil {
-		fmt.Printf("⚠ Warning: failed to remove user finalizers: %v\n", err)
-	}
+	removeFinalizers("users")
 
 	// Delete resources
 	resources := []string{"llmmodels", "services.llmcloud.io", "virtualmachines", "projects", "users"}
@@ -177,15 +162,14 @@ func cleanupResources() error {
 	_ = execCommandShell(fmt.Sprintf("for ns in $(kubectl --kubeconfig=%s get ns -o name 2>/dev/null | grep project- | cut -d/ -f2); do kubectl --kubeconfig=%s patch namespace $ns -p '{\"metadata\":{\"finalizers\":null}}' --type=merge 2>/dev/null; kubectl --kubeconfig=%s delete namespace $ns --wait=false --grace-period=0 2>/dev/null; done || true", kubeconfig, kubeconfig, kubeconfig))
 
 	fmt.Println("✓ Resources cleaned up")
-	return nil
 }
 
-func removeFinalizers(ctx context.Context, resource string) error {
+func removeFinalizers(resource string) {
 	// Get all resources
 	listCmd := fmt.Sprintf("kubectl --kubeconfig=%s get %s -o name 2>/dev/null", kubeconfig, resource)
 	output, err := exec.Command("sh", "-c", listCmd).Output()
 	if err != nil {
-		return nil // No resources found
+		return // No resources found
 	}
 
 	resources := strings.Split(strings.TrimSpace(string(output)), "\n")
@@ -196,50 +180,47 @@ func removeFinalizers(ctx context.Context, resource string) error {
 		patchCmd := fmt.Sprintf("kubectl --kubeconfig=%s patch %s -p '{\"metadata\":{\"finalizers\":[]}}' --type=merge 2>/dev/null", kubeconfig, res)
 		_ = execCommandShell(patchCmd)
 	}
-
-	return nil
 }
 
-func cleanupOperatorFiles() error {
+func cleanupOperatorFiles() {
 	fmt.Println("Cleaning up operator files...")
 
-	_ = execCommand("ssh", sshHost, "sudo rm -rf /opt/llmcloud-operator 2>/dev/null || true")
-	_ = execCommand("ssh", sshHost, "sudo rm -f /etc/systemd/system/llmcloud-operator.service 2>/dev/null || true")
-	_ = execCommand("ssh", sshHost, "sudo systemctl daemon-reload || true")
+	_ = execCommand(sshHost, "sudo rm -rf /opt/llmcloud-operator 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo rm -f /etc/systemd/system/llmcloud-operator.service 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo systemctl daemon-reload || true")
 
 	fmt.Println("✓ Operator files cleaned up")
-	return nil
 }
 
-func uninstallK0sCluster() error {
+func uninstallK0sCluster() {
 	fmt.Println("==> Uninstalling k3s cluster")
 
 	// Check if k3s is installed
 	checkCmd := "command -v k3s >/dev/null 2>&1"
-	if execCommand("ssh", sshHost, checkCmd) != nil {
+	if execCommand(sshHost, checkCmd) != nil {
 		fmt.Println("⚠ k3s not found on remote host, skipping")
-		return nil
+		return
 	}
 
 	// Stop k3s service
 	fmt.Println("Stopping k3s service...")
-	_ = execCommand("ssh", sshHost, "sudo systemctl stop k3s 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo systemctl stop k3s 2>/dev/null || true")
 
 	// Uninstall k3s using the official uninstall script
 	fmt.Println("Uninstalling k3s...")
-	_ = execCommand("ssh", sshHost, "sudo /usr/local/bin/k3s-uninstall.sh 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo /usr/local/bin/k3s-uninstall.sh 2>/dev/null || true")
 
 	// Clean up storage device data
 	fmt.Println("Cleaning up storage directories...")
-	_ = execCommand("ssh", sshHost, "sudo rm -rf /mnt/k3s /mnt/vm-disks /mnt/llm-models /mnt/services-data 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo rm -rf /mnt/k3s /mnt/vm-disks /mnt/llm-models /mnt/services-data 2>/dev/null || true")
 
 	// Unmount /mnt
 	fmt.Println("Unmounting /mnt...")
-	_ = execCommand("ssh", sshHost, "sudo umount /mnt 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo umount /mnt 2>/dev/null || true")
 
 	// Remove fstab entry
 	fmt.Println("Removing fstab entry...")
-	_ = execCommand("ssh", sshHost, "sudo sed -i '/\\/mnt.*ext4/d' /etc/fstab 2>/dev/null || true")
+	_ = execCommand(sshHost, "sudo sed -i '/\\/mnt.*ext4/d' /etc/fstab 2>/dev/null || true")
 
 	// Remove kubeconfig
 	if _, err := os.Stat(kubeconfig); err == nil {
@@ -248,11 +229,10 @@ func uninstallK0sCluster() error {
 	}
 
 	fmt.Println("✓ k0s uninstalled successfully")
-	return nil
 }
 
-func execCommand(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+func execCommand(args ...string) error {
+	cmd := exec.Command("ssh", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

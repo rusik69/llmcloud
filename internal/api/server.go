@@ -24,6 +24,11 @@ import (
 //go:embed static/*
 var staticFiles embed.FS
 
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+const claimsKey contextKey = "claims"
+
 type Server struct {
 	client client.Client
 }
@@ -71,7 +76,7 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 		return
 	}
-	ctx := context.WithValue(r.Context(), "claims", claims)
+	ctx := context.WithValue(r.Context(), claimsKey, claims)
 	r = r.WithContext(ctx)
 
 	// Route to appropriate handler
@@ -390,33 +395,6 @@ func (s *Server) handleVMActions(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, map[string]string{"status": "success", "action": action})
 }
 
-// authMiddleware verifies JWT tokens
-func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Missing authorization header", http.StatusUnauthorized)
-			return
-		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
-			return
-		}
-
-		claims, err := auth.ValidateJWT(tokenString)
-		if err != nil {
-			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
-			return
-		}
-
-		// Store claims in context for use in handlers
-		ctx := context.WithValue(r.Context(), "claims", claims)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	}
-}
-
 // handleLogin handles user authentication
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -463,7 +441,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleUsers handles user listing and creation (admin only)
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
-	claims := r.Context().Value("claims").(*auth.Claims)
+	claims := r.Context().Value(claimsKey).(*auth.Claims)
 	ctx := context.Background()
 
 	switch r.Method {
@@ -537,7 +515,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 
 // handleUser handles individual user operations (admin only)
 func (s *Server) handleUser(w http.ResponseWriter, r *http.Request) {
-	claims := r.Context().Value("claims").(*auth.Claims)
+	claims := r.Context().Value(claimsKey).(*auth.Claims)
 	if !claims.IsAdmin {
 		http.Error(w, "Admin access required", http.StatusForbidden)
 		return
@@ -924,7 +902,7 @@ func (s *Server) handleVMEvents(w http.ResponseWriter, r *http.Request) {
 // handleClusterNodes handles GET /api/v1/nodes and POST /api/v1/nodes (cluster-wide, admin only)
 // Returns actual Kubernetes nodes, not custom Node CRD
 func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
-	claims := r.Context().Value("claims").(*auth.Claims)
+	claims := r.Context().Value(claimsKey).(*auth.Claims)
 	if !claims.IsAdmin {
 		http.Error(w, "Admin access required", http.StatusForbidden)
 		return
@@ -974,7 +952,7 @@ func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Execute k0s join command via SSH
-		if err := s.addNode(ctx, req.Host, req.Role, req.SSHKey, req.Password); err != nil {
+		if err := s.addNode(req.Host, req.Role); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to add node: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -988,7 +966,7 @@ func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
 
 // handleNodeActions handles DELETE /api/v1/nodes/:name
 func (s *Server) handleNodeActions(w http.ResponseWriter, r *http.Request) {
-	claims := r.Context().Value("claims").(*auth.Claims)
+	claims := r.Context().Value(claimsKey).(*auth.Claims)
 	if !claims.IsAdmin {
 		http.Error(w, "Admin access required", http.StatusForbidden)
 		return
@@ -1002,12 +980,10 @@ func (s *Server) handleNodeActions(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeName := parts[0]
 
-	ctx := context.Background()
-
 	switch r.Method {
 	case http.MethodDelete:
 		// Remove node from cluster
-		if err := s.removeNode(ctx, nodeName); err != nil {
+		if err := s.removeNode(nodeName); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to remove node: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -1020,7 +996,7 @@ func (s *Server) handleNodeActions(w http.ResponseWriter, r *http.Request) {
 }
 
 // addNode adds a new node to the k0s cluster via SSH
-func (s *Server) addNode(ctx context.Context, host, role, sshKey, password string) error {
+func (s *Server) addNode(host, role string) error {
 	// Get k0s token from the controller
 	var tokenType string
 	if role == "master" {
@@ -1058,7 +1034,7 @@ func (s *Server) addNode(ctx context.Context, host, role, sshKey, password strin
 }
 
 // removeNode removes a node from the k0s cluster
-func (s *Server) removeNode(ctx context.Context, nodeName string) error {
+func (s *Server) removeNode(nodeName string) error {
 	// First, drain the node
 	drainCmd := fmt.Sprintf("kubectl drain %s --ignore-daemonsets --delete-emptydir-data --force --timeout=60s", nodeName)
 	if _, err := s.executeSSHCommand("", drainCmd); err != nil {
