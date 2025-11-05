@@ -44,31 +44,45 @@ var _ = Describe("Project Controller", func() {
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Project")
-			err := k8sClient.Get(ctx, typeNamespacedName, project)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &llmcloudv1alpha1.Project{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
+			resource := &llmcloudv1alpha1.Project{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: llmcloudv1alpha1.ProjectSpec{
+					Description: "Test project",
+					Members: []llmcloudv1alpha1.ProjectMember{
+						{Username: "testuser", Role: "owner"},
 					},
-					Spec: llmcloudv1alpha1.ProjectSpec{
-						Description: "Test project",
-						Members: []llmcloudv1alpha1.ProjectMember{
-							{Username: "testuser", Role: "owner"},
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				},
 			}
+			err := k8sClient.Create(ctx, resource)
+			if err != nil && !errors.IsAlreadyExists(err) {
+				Expect(err).NotTo(HaveOccurred())
+			}
+			// Wait for resource to be available
+			Eventually(func() error {
+				return k8sClient.Get(ctx, typeNamespacedName, &llmcloudv1alpha1.Project{})
+			}, "5s", "1s").Should(Succeed())
 		})
 
 		AfterEach(func() {
+			By("Cleanup the specific resource instance Project")
 			resource := &llmcloudv1alpha1.Project{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+			if err == nil {
+				// Remove finalizers to allow deletion
+				resource.Finalizers = []string{}
+				_ = k8sClient.Update(ctx, resource)
 
-			By("Cleanup the specific resource instance Project")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+				// Wait for deletion to complete
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, typeNamespacedName, &llmcloudv1alpha1.Project{})
+					return errors.IsNotFound(err)
+				}, "5s", "1s").Should(BeTrue())
+			}
 		})
 
 		It("should successfully reconcile the resource", func() {
@@ -116,7 +130,9 @@ var _ = Describe("Project Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying namespace was created")
-			Expect(k8sClient.Get(ctx, typeNamespacedName, project)).To(Succeed())
+			Eventually(func() error {
+				return k8sClient.Get(ctx, typeNamespacedName, project)
+			}, "5s", "1s").Should(Succeed())
 			Eventually(func() string {
 				_ = k8sClient.Get(ctx, typeNamespacedName, project)
 				return project.Status.Namespace

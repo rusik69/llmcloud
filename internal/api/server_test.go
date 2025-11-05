@@ -99,17 +99,12 @@ func TestHandleProjectsGet(t *testing.T) {
 func TestHandleProjectsPost(t *testing.T) {
 	s := &Server{client: setupTestClient()}
 
-	project := llmcloudv1alpha1.Project{
-		ObjectMeta: metav1.ObjectMeta{Name: "new-project"},
-		Spec: llmcloudv1alpha1.ProjectSpec{
-			Description: "New project",
-			Members: []llmcloudv1alpha1.ProjectMember{
-				{Username: "testuser", Role: "owner"},
-			},
-		},
+	reqBody := map[string]string{
+		"name":        "new-project",
+		"description": "New project",
 	}
 
-	body, _ := json.Marshal(project)
+	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/api/v1/projects", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 
