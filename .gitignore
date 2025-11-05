@@ -29,7 +29,8 @@ go.work
 # Build artifacts
 static/*
 !static/.gitkeep
-internal/api/static/
+internal/api/static/*
+!internal/api/static/.gitkeep
 web/node_modules/
 web/dist/
 

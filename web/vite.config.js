@@ -13,7 +13,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: '../static',
+    outDir: '../internal/api/static',
     emptyOutDir: true
   }
 })
