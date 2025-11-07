@@ -52,7 +52,7 @@ test: $(ENVTEST) ## Run tests
 	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
 
 lint: $(GOLANGCI_LINT) ## Run linter
-	$(GOLANGCI_LINT) run
+	GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run
 
 lint-fix: $(GOLANGCI_LINT) ## Fix linting issues
 	$(GOLANGCI_LINT) run --fix
