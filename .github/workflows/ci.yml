@@ -19,7 +19,12 @@ jobs:
     runs-on: self-hosted
     container:
       image: golang:1.25
+      options: --user root
     steps:
+      - name: Fix permissions
+        run: |
+          chmod -R 777 $GITHUB_WORKSPACE || true
+
       - name: Checkout
         uses: actions/checkout@v4
 
