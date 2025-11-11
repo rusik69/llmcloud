@@ -96,7 +96,7 @@ docker-push: ## Push operator image
 
 docker-buildx: ## Build and push multi-arch operator image
 	$(CONTAINER_TOOL) buildx create --name llmcloud-builder --use 2>/dev/null || $(CONTAINER_TOOL) buildx use llmcloud-builder
-	$(CONTAINER_TOOL) buildx build --push --platform=linux/amd64,linux/arm64 $(shell echo $(IMG) | sed 's/^/--tag /; s/ / --tag /g') .
+	$(CONTAINER_TOOL) buildx build --push --platform=linux/amd64 $(shell echo "$(IMG)" | tr '\n' ' ' | sed 's/[^ ][^ ]*/ --tag &/g') .
 
 ##@ Tools
 
