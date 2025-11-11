@@ -64,6 +64,11 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Clean workspace
+        run: |
+          sudo rm -rf $GITHUB_WORKSPACE/* || true
+          sudo rm -rf $GITHUB_WORKSPACE/.* || true
+
       - name: Checkout
         uses: actions/checkout@v4
 
