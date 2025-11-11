@@ -92,6 +92,6 @@ jobs:
 
       - name: Build and push operator image
         env:
-          IMG: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          IMG: ${{ steps.meta.outputs.tags }}
         run: make docker-buildx
 
