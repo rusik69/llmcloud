@@ -109,3 +109,64 @@ jobs:
             fi
           done
 
+  deploy-and-e2e:
+    name: Deploy and E2E Test
+    runs-on: self-hosted
+    needs: build-operator
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Clean workspace
+        run: |
+          sudo rm -rf $GITHUB_WORKSPACE/* || true
+          sudo rm -rf $GITHUB_WORKSPACE/.* || true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install tools
+        run: make tools
+
+      - name: Deploy operator to local cluster
+        env:
+          KUBECONFIG: ${{ env.HOME }}/.kube/config-llmcloud
+        run: |
+          # Uninstall previous deployment if exists
+          make uninstall || true
+          kubectl delete namespace llmcloud-operator-system --wait=false || true
+
+          # Install CRDs
+          make install
+
+          # Deploy operator with latest image
+          make deploy IMG=ghcr.io/${{ github.repository }}:latest
+
+          # Wait for deployment to be ready
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment/llmcloud-operator-controller-manager \
+            -n llmcloud-operator-system
+
+      - name: Run E2E tests
+        env:
+          KUBECONFIG: ${{ env.HOME }}/.kube/config-llmcloud
+          USE_EXISTING_CLUSTER: "true"
+        run: |
+          go test -v -tags=e2e ./test/e2e/... -timeout 30m
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          kubectl get pods -n llmcloud-operator-system
+          kubectl describe pods -n llmcloud-operator-system
+          kubectl logs -n llmcloud-operator-system -l control-plane=controller-manager --tail=100
+
+      - name: Cleanup
+        if: always()
+        run: |
+          make undeploy || true
+          make uninstall || true
+
