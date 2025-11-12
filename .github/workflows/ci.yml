@@ -101,12 +101,11 @@ jobs:
           FIRST_TAG=$(echo "$TAGS" | head -n1)
           echo "Building with primary tag: $FIRST_TAG"
           IMG="$FIRST_TAG" make docker-buildx
-          # Push additional tags
+          # Create additional tags using buildx imagetools
           echo "$TAGS" | while read -r tag; do
             if [ -n "$tag" ] && [ "$tag" != "$FIRST_TAG" ]; then
-              echo "Tagging as: $tag"
-              docker tag "$FIRST_TAG" "$tag"
-              docker push "$tag"
+              echo "Creating tag: $tag"
+              docker buildx imagetools create --tag "$tag" "$FIRST_TAG"
             fi
           done
 
