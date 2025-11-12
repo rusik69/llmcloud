@@ -63,18 +63,20 @@ clean: ## Clean build artifacts
 ##@ Deployment
 
 .PHONY: install uninstall deploy undeploy deploy-remote logs status
+KUBECTL_FLAGS ?=
+
 install: $(KUSTOMIZE) ## Install CRDs into cluster
-	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+	$(KUSTOMIZE) build config/crd | kubectl apply $(KUBECTL_FLAGS) -f -
 
 uninstall: $(KUSTOMIZE) ## Uninstall CRDs from cluster
-	$(KUSTOMIZE) build config/crd | kubectl delete --ignore-not-found -f -
+	$(KUSTOMIZE) build config/crd | kubectl delete $(KUBECTL_FLAGS) --ignore-not-found -f -
 
 deploy: $(KUSTOMIZE) ## Deploy operator to Kubernetes cluster
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
+	$(KUSTOMIZE) build config/default | kubectl apply $(KUBECTL_FLAGS) -f -
 
 undeploy: $(KUSTOMIZE) ## Undeploy operator from Kubernetes cluster
-	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found -f -
+	$(KUSTOMIZE) build config/default | kubectl delete $(KUBECTL_FLAGS) --ignore-not-found -f -
 
 deploy-remote: build ## Deploy to remote cluster via SSH
 	./bin/manager deploy --ssh-host=$(SSH_HOST) --storage-device=$(STORAGE_DEVICE)

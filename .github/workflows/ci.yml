@@ -113,7 +113,10 @@ jobs:
     name: Deploy and E2E Test
     runs-on: self-hosted
     needs: build-operator
-    if: false  # Disabled until k3s cluster certificates are fixed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      KUBECTL_FLAGS: --insecure-skip-tls-verify=true
     steps:
       - name: Clean workspace
         run: |
@@ -131,30 +134,39 @@ jobs:
       - name: Install tools
         run: make tools
 
+      - name: Cleanup previous deployments
+        run: |
+          # Make k3s kubeconfig readable
+          sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+
+          # Uninstall previous deployment completely
+          make undeploy KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
+          make uninstall KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
+
+          # Delete namespace and wait for it to be gone
+          kubectl ${KUBECTL_FLAGS} delete namespace llmcloud-operator-system --timeout=60s || true
+
+          # Wait for namespace to be fully deleted
+          while kubectl ${KUBECTL_FLAGS} get namespace llmcloud-operator-system 2>/dev/null; do
+            echo "Waiting for namespace to be deleted..."
+            sleep 2
+          done
+
       - name: Deploy operator to local cluster
         run: |
-          # Use k3s kubeconfig with insecure-skip-tls-verify
-          sudo chmod 644 /etc/rancher/k3s/k3s.yaml
-          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-          # Uninstall previous deployment if exists
-          kubectl --insecure-skip-tls-verify=true delete namespace llmcloud-operator-system --wait=false || true
-          make uninstall KUBECTL_FLAGS="--insecure-skip-tls-verify=true" || true
-
           # Install CRDs
-          make install KUBECTL_FLAGS="--insecure-skip-tls-verify=true"
+          make install KUBECTL_FLAGS="${KUBECTL_FLAGS}"
 
           # Deploy operator with latest image
-          IMG=ghcr.io/${{ github.repository }}:latest make deploy KUBECTL_FLAGS="--insecure-skip-tls-verify=true"
+          IMG=ghcr.io/${{ github.repository }}:latest make deploy KUBECTL_FLAGS="${KUBECTL_FLAGS}"
 
           # Wait for deployment to be ready
-          kubectl --insecure-skip-tls-verify=true wait --for=condition=available --timeout=300s \
+          kubectl ${KUBECTL_FLAGS} wait --for=condition=available --timeout=300s \
             deployment/llmcloud-operator-controller-manager \
             -n llmcloud-operator-system
 
       - name: Run E2E tests
         env:
-          KUBECONFIG: /etc/rancher/k3s/k3s.yaml
           USE_EXISTING_CLUSTER: "true"
           IMG: ghcr.io/${{ github.repository }}:latest
         run: |
@@ -162,18 +174,16 @@ jobs:
 
       - name: Collect logs on failure
         if: failure()
-        env:
-          KUBECONFIG: /etc/rancher/k3s/k3s.yaml
         run: |
-          kubectl --insecure-skip-tls-verify=true get pods -n llmcloud-operator-system
-          kubectl --insecure-skip-tls-verify=true describe pods -n llmcloud-operator-system
-          kubectl --insecure-skip-tls-verify=true logs -n llmcloud-operator-system -l control-plane=controller-manager --tail=100
+          kubectl ${KUBECTL_FLAGS} get pods -n llmcloud-operator-system
+          kubectl ${KUBECTL_FLAGS} get events -n llmcloud-operator-system --sort-by='.lastTimestamp'
+          kubectl ${KUBECTL_FLAGS} describe pods -n llmcloud-operator-system
+          kubectl ${KUBECTL_FLAGS} logs -n llmcloud-operator-system -l control-plane=controller-manager --tail=200
 
       - name: Cleanup
         if: always()
-        env:
-          KUBECONFIG: /etc/rancher/k3s/k3s.yaml
         run: |
-          make undeploy KUBECTL_FLAGS="--insecure-skip-tls-verify=true" || true
-          make uninstall KUBECTL_FLAGS="--insecure-skip-tls-verify=true" || true
+          make undeploy KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
+          make uninstall KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
+          kubectl ${KUBECTL_FLAGS} delete namespace llmcloud-operator-system --timeout=60s || true
 
