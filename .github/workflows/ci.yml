@@ -97,12 +97,13 @@ jobs:
 
       - name: Build and push operator image
         run: |
-          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          TAGS="${{ steps.meta.outputs.tags }}"
+          FIRST_TAG=$(echo "$TAGS" | head -n1)
           echo "Building with primary tag: $FIRST_TAG"
           IMG="$FIRST_TAG" make docker-buildx
           # Push additional tags
-          for tag in ${{ steps.meta.outputs.tags }}; do
-            if [ "$tag" != "$FIRST_TAG" ]; then
+          echo "$TAGS" | while read -r tag; do
+            if [ -n "$tag" ] && [ "$tag" != "$FIRST_TAG" ]; then
               echo "Tagging as: $tag"
               docker tag "$FIRST_TAG" "$tag"
               docker push "$tag"
