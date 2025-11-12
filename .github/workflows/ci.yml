@@ -134,23 +134,48 @@ jobs:
       - name: Install tools
         run: make tools
 
-      - name: Cleanup previous deployments
+      - name: Uninstall k3s
         run: |
-          # Make k3s kubeconfig readable
-          sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+          if [ -x /usr/local/bin/k3s-uninstall.sh ]; then
+            echo "Uninstalling k3s..."
+            sudo /usr/local/bin/k3s-uninstall.sh || true
+          fi
+          # Wait for k3s to be fully uninstalled
+          sleep 5
 
-          # Uninstall previous deployment completely
-          make undeploy KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
-          make uninstall KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
+      - name: Install k3s
+        run: |
+          echo "Installing k3s..."
+          curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
 
-          # Delete namespace and wait for it to be gone
-          kubectl ${KUBECTL_FLAGS} delete namespace llmcloud-operator-system --timeout=60s || true
+          # Wait for k3s to be ready
+          echo "Waiting for k3s to be ready..."
+          sudo k3s kubectl wait --for=condition=ready node --all --timeout=120s
 
-          # Wait for namespace to be fully deleted
-          while kubectl ${KUBECTL_FLAGS} get namespace llmcloud-operator-system 2>/dev/null; do
-            echo "Waiting for namespace to be deleted..."
-            sleep 2
-          done
+          # Wait for core services
+          sudo k3s kubectl wait --for=condition=available --timeout=120s \
+            deployment/coredns -n kube-system
+
+          echo "k3s is ready"
+
+      - name: Install KubeVirt and CDI
+        run: |
+          # Install KubeVirt
+          export KUBEVIRT_VERSION="v1.1.1"
+          kubectl ${KUBECTL_FLAGS} apply -f "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml"
+          kubectl ${KUBECTL_FLAGS} apply -f "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml"
+
+          # Install CDI
+          export CDI_VERSION="v1.58.0"
+          kubectl ${KUBECTL_FLAGS} apply -f "https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-operator.yaml"
+          kubectl ${KUBECTL_FLAGS} apply -f "https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-cr.yaml"
+
+          # Wait for KubeVirt to be ready
+          echo "Waiting for KubeVirt to be ready..."
+          kubectl ${KUBECTL_FLAGS} wait --for=condition=available --timeout=300s \
+            deployment/virt-operator -n kubevirt || true
+
+          echo "KubeVirt and CDI installed"
 
       - name: Deploy operator to local cluster
         run: |
