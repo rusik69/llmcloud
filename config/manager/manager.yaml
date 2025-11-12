@@ -97,3 +97,10 @@ spec:
       volumes: []
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
+      tolerations:
+      - key: node.kubernetes.io/disk-pressure
+        operator: Exists
+        effect: NoSchedule
+      - key: node.kubernetes.io/memory-pressure
+        operator: Exists
+        effect: NoSchedule
