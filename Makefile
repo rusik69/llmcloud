@@ -62,11 +62,24 @@ clean: ## Clean build artifacts
 
 ##@ Deployment
 
-.PHONY: deploy uninstall logs status
-deploy: build ## Deploy to remote cluster
+.PHONY: install uninstall deploy undeploy deploy-remote logs status
+install: $(KUSTOMIZE) ## Install CRDs into cluster
+	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+
+uninstall: $(KUSTOMIZE) ## Uninstall CRDs from cluster
+	$(KUSTOMIZE) build config/crd | kubectl delete --ignore-not-found -f -
+
+deploy: $(KUSTOMIZE) ## Deploy operator to Kubernetes cluster
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/default | kubectl apply -f -
+
+undeploy: $(KUSTOMIZE) ## Undeploy operator from Kubernetes cluster
+	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found -f -
+
+deploy-remote: build ## Deploy to remote cluster via SSH
 	./bin/manager deploy --ssh-host=$(SSH_HOST) --storage-device=$(STORAGE_DEVICE)
 
-uninstall: build ## Uninstall from remote cluster
+uninstall-remote: build ## Uninstall from remote cluster via SSH
 	./bin/manager uninstall --ssh-host=$(SSH_HOST) --k0s
 
 logs: ## View operator logs
