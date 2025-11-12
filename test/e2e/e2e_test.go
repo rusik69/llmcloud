@@ -278,16 +278,141 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
+	})
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+	Context("VirtualMachine Lifecycle", Ordered, func() {
+		const testVMName = "test-cirros-vm"
+		const testNamespace = "default"
+
+		AfterAll(func() {
+			By("cleaning up test VM")
+			cmd := exec.Command("kubectl", "delete", "virtualmachine", testVMName, "-n", testNamespace, "--ignore-not-found=true")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should create a VirtualMachine successfully", func() {
+			By("creating a VirtualMachine CR")
+			vmYAML := fmt.Sprintf(`
+apiVersion: llmcloud.llmcloud.io/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  cpus: 1
+  memory: "256Mi"
+  diskSize: "1Gi"
+  os: cirros
+  runStrategy: Always
+`, testVMName, testNamespace)
+
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(vmYAML)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create VirtualMachine")
+
+			By("verifying VirtualMachine CR was created")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace, "-o", "jsonpath={.metadata.name}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal(testVMName))
+			}, 30*time.Second).Should(Succeed())
+
+			By("waiting for VirtualMachine to be Running")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace, "-o", "jsonpath={.status.phase}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Or(Equal("Running"), Equal("Pending")), "VM should be Running or Pending")
+			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying underlying KubeVirt VirtualMachine was created")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace, "-o", "json")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("kubevirt.io"))
+			}, 1*time.Minute).Should(Succeed())
+		})
+
+		It("should stop a running VirtualMachine", func() {
+			By("updating VirtualMachine runStrategy to Halted")
+			patchJSON := `{"spec":{"runStrategy":"Halted"}}`
+			cmd := exec.Command("kubectl", "patch", "virtualmachine", testVMName, "-n", testNamespace,
+				"--type=merge", "-p", patchJSON)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to patch VirtualMachine")
+
+			By("verifying VirtualMachine runStrategy was updated")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace,
+					"-o", "jsonpath={.spec.runStrategy}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Halted"))
+			}, 30*time.Second).Should(Succeed())
+
+			By("verifying VirtualMachineInstance is stopped")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachineinstance", testVMName, "-n", testNamespace)
+				_, err := utils.Run(cmd)
+				// Should not exist or be in stopped state
+				g.Expect(err).To(HaveOccurred(), "VirtualMachineInstance should not be running")
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		})
+
+		It("should start a stopped VirtualMachine", func() {
+			By("updating VirtualMachine runStrategy to Always")
+			patchJSON := `{"spec":{"runStrategy":"Always"}}`
+			cmd := exec.Command("kubectl", "patch", "virtualmachine", testVMName, "-n", testNamespace,
+				"--type=merge", "-p", patchJSON)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to patch VirtualMachine")
+
+			By("verifying VirtualMachine runStrategy was updated")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace,
+					"-o", "jsonpath={.spec.runStrategy}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Always"))
+			}, 30*time.Second).Should(Succeed())
+
+			By("verifying VirtualMachine is running again")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace,
+					"-o", "jsonpath={.status.phase}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Or(Equal("Running"), Equal("Pending")))
+			}, 3*time.Minute, 5*time.Second).Should(Succeed())
+		})
+
+		It("should delete a VirtualMachine successfully", func() {
+			By("deleting the VirtualMachine CR")
+			cmd := exec.Command("kubectl", "delete", "virtualmachine", testVMName, "-n", testNamespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete VirtualMachine")
+
+			By("verifying VirtualMachine CR was deleted")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred(), "VirtualMachine should be deleted")
+			}, 1*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying underlying KubeVirt resources were cleaned up")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "virtualmachine,virtualmachineinstance,datavolume",
+					"-l", fmt.Sprintf("vm=%s", testVMName), "-n", testNamespace)
+				output, err := utils.Run(cmd)
+				g.Expect(err).To(Or(HaveOccurred(), Not(HaveOccurred())))
+				if err == nil {
+					g.Expect(output).To(ContainSubstring("No resources found"))
+				}
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		})
 	})
 })
 
