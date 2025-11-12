@@ -69,7 +69,7 @@ install: $(KUSTOMIZE) ## Install CRDs into cluster
 	$(KUSTOMIZE) build config/crd | kubectl apply $(KUBECTL_FLAGS) -f -
 
 uninstall: $(KUSTOMIZE) ## Uninstall CRDs from cluster
-	$(KUSTOMIZE) build config/crd | kubectl delete $(KUBECTL_FLAGS) --ignore-not-found -f -
+	$(KUSTOMIZE) build config/crd | kubectl delete $(KUBECTL_FLAGS) --ignore-not-found -f - 2>&1 | grep -v "NotFound" || true
 
 deploy: $(KUSTOMIZE) ## Deploy operator to Kubernetes cluster
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
