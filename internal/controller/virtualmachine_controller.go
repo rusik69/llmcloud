@@ -96,8 +96,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if err := r.updateVMStatusFromVMI(ctx, vm); err != nil {
-		log.Error(err, "Failed to update VM status from VMI")
-		return ctrl.Result{RequeueAfter: 10}, nil
+		// Ignore conflict errors - they will be retried on next reconcile
+		if !errors.IsConflict(err) {
+			log.Error(err, "Failed to update VM status from VMI")
+		}
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -106,23 +109,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 func (r *VirtualMachineReconciler) reconcileKubeVirtVM(ctx context.Context, vm *llmcloudv1alpha1.VirtualMachine) error {
 	kvVM := r.buildKubeVirtVM(vm)
 
-	// Check if KubeVirt VM exists
-	existing := &unstructured.Unstructured{}
-	existing.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "kubevirt.io",
-		Version: "v1",
-		Kind:    "VirtualMachine",
-	})
-
-	err := r.Get(ctx, client.ObjectKey{Name: vm.Name, Namespace: vm.Namespace}, existing)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return r.Create(ctx, kvVM)
-		}
-		return err
-	}
-
-	// Use Server-Side Apply to avoid conflicts
+	// Use Server-Side Apply for idempotent create/update
+	// This will create if not exists, or update if exists
 	return r.Patch(ctx, kvVM, client.Apply, client.ForceOwnership, client.FieldOwner("llmcloud-operator"))
 }
 
