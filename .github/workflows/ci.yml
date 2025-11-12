@@ -14,9 +14,36 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  cleanup:
+    name: Cleanup Disk Space
+    runs-on: self-hosted
+    steps:
+      - name: Free disk space
+        run: |
+          echo "Disk usage before cleanup:"
+          df -h
+
+          # Clean Docker resources
+          docker system prune -af --volumes || true
+
+          # Clean old Go cache
+          sudo rm -rf /root/.cache/go-build || true
+          sudo rm -rf $HOME/.cache/go-build || true
+
+          # Clean apt cache
+          sudo apt-get clean || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+
+          # Clean old k3s data if exists
+          sudo rm -rf /var/lib/rancher/k3s/agent/containerd/* || true
+
+          echo "Disk usage after cleanup:"
+          df -h
+
   test:
     name: Test
     runs-on: self-hosted
+    needs: cleanup
     container:
       image: golang:1.25
       options: --user root
@@ -58,7 +85,7 @@ jobs:
   build-operator:
     name: Build Operator Image
     runs-on: self-hosted
-    needs: test
+    needs: [cleanup, test]
     if: github.event_name == 'push'
     permissions:
       contents: read
