@@ -54,9 +54,13 @@ const (
 
 func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+	log.Info("Reconciling VirtualMachine", "name", req.Name, "namespace", req.Namespace)
 
 	vm := &llmcloudv1alpha1.VirtualMachine{}
 	if err := r.Get(ctx, req.NamespacedName, vm); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			log.Info("VirtualMachine not found, ignoring", "name", req.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -90,11 +94,13 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		log.Info("VM reboot initiated", "vm", vm.Name)
 	}
 
+	log.Info("Reconciling KubeVirt VM", "vm", vm.Name)
 	if err := r.reconcileKubeVirtVM(ctx, vm); err != nil {
 		log.Error(err, "Failed to reconcile KubeVirt VM")
 		r.updateVMStatus(ctx, vm, "Error", err.Error())
 		return ctrl.Result{}, err
 	}
+	log.Info("Successfully reconciled KubeVirt VM", "vm", vm.Name)
 
 	if err := r.updateVMStatusFromVMI(ctx, vm); err != nil {
 		// Ignore conflict errors - they will be retried on next reconcile
@@ -245,6 +251,8 @@ func (r *VirtualMachineReconciler) buildKubeVirtVM(vm *llmcloudv1alpha1.VirtualM
 }
 
 func (r *VirtualMachineReconciler) updateVMStatusFromVMI(ctx context.Context, vm *llmcloudv1alpha1.VirtualMachine) error {
+	log := logf.FromContext(ctx)
+
 	vmi := &unstructured.Unstructured{}
 	vmi.SetGroupVersionKind(schema.GroupVersionKind{
 		Group:   "kubevirt.io",
@@ -255,12 +263,15 @@ func (r *VirtualMachineReconciler) updateVMStatusFromVMI(ctx context.Context, vm
 	err := r.Get(ctx, client.ObjectKey{Name: vm.Name, Namespace: vm.Namespace}, vmi)
 	if err != nil {
 		if errors.IsNotFound(err) {
+			log.Info("VMI not found, setting status to Pending", "vm", vm.Name)
 			vm.Status.Phase = llmcloudv1alpha1.PhasePending
 			vm.Status.Ready = false
 			return r.Status().Update(ctx, vm)
 		}
 		return err
 	}
+
+	log.Info("Found VMI, updating status", "vm", vm.Name)
 
 	// Extract status from VMI
 	status, _, _ := unstructured.NestedMap(vmi.Object, "status")
