@@ -128,11 +128,16 @@ jobs:
           FIRST_TAG=$(echo "$TAGS" | head -n1)
           echo "Building with primary tag: $FIRST_TAG"
           IMG="$FIRST_TAG" make docker-buildx
-          # Create additional tags using buildx imagetools
+          # Create additional tags one at a time to avoid concurrent map writes
           echo "$TAGS" | while read -r tag; do
             if [ -n "$tag" ] && [ "$tag" != "$FIRST_TAG" ]; then
               echo "Creating tag: $tag"
-              docker buildx imagetools create --tag "$tag" "$FIRST_TAG"
+              docker buildx imagetools create --tag "$tag" "$FIRST_TAG" || {
+                echo "Failed to create tag $tag, retrying..."
+                sleep 2
+                docker buildx imagetools create --tag "$tag" "$FIRST_TAG"
+              }
+              sleep 1
             fi
           done
 
