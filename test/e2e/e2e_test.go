@@ -337,7 +337,7 @@ spec:
 
 			By("verifying underlying KubeVirt VirtualMachine was created")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace, "-o", "json")
+				cmd := exec.Command("kubectl", "get", "virtualmachine.kubevirt.io", testVMName, "-n", testNamespace, "-o", "json")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("kubevirt.io"))
