@@ -261,7 +261,20 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          make undeploy KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
-          make uninstall KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
+          # Delete any test VMs first to avoid finalizer issues
+          kubectl ${KUBECTL_FLAGS} delete virtualmachine --all -n default --timeout=30s || true
+
+          # Undeploy with timeout
+          timeout 120 make undeploy KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
+
+          # Uninstall CRDs
+          timeout 60 make uninstall KUBECTL_FLAGS="${KUBECTL_FLAGS}" || true
+
+          # Force delete namespace if it's stuck
           kubectl ${KUBECTL_FLAGS} delete namespace llmcloud-operator-system --timeout=60s || true
+
+          # Remove finalizers if namespace is still stuck
+          kubectl ${KUBECTL_FLAGS} get namespace llmcloud-operator-system -o json 2>/dev/null | \
+            jq '.spec.finalizers = []' | \
+            kubectl ${KUBECTL_FLAGS} replace --raw /api/v1/namespaces/llmcloud-operator-system/finalize -f - || true
 
