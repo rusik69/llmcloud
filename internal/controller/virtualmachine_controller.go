@@ -278,7 +278,14 @@ func (r *VirtualMachineReconciler) updateVMStatusFromVMI(ctx context.Context, vm
 			log.Info("VMI not found, setting status to Pending", "vm", vm.Name)
 			vm.Status.Phase = llmcloudv1alpha1.PhasePending
 			vm.Status.Ready = false
-			return r.Status().Update(ctx, vm)
+			log.Info("Updating VM status (VMI not found)", "vm", vm.Name, "phase", vm.Status.Phase)
+			err := r.Status().Update(ctx, vm)
+			if err != nil {
+				log.Error(err, "Failed to update VM status (VMI not found)", "vm", vm.Name)
+				return err
+			}
+			log.Info("Successfully updated VM status (VMI not found)", "vm", vm.Name)
+			return nil
 		}
 		return err
 	}
