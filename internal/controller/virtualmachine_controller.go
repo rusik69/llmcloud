@@ -329,7 +329,14 @@ func (r *VirtualMachineReconciler) updateVMStatusFromVMI(ctx context.Context, vm
 		ObservedGeneration: vm.Generation,
 	})
 
-	return r.Status().Update(ctx, vm)
+	log.Info("Updating VM status", "vm", vm.Name, "phase", vm.Status.Phase, "ready", vm.Status.Ready)
+	err = r.Status().Update(ctx, vm)
+	if err != nil {
+		log.Error(err, "Failed to update VM status", "vm", vm.Name)
+		return err
+	}
+	log.Info("Successfully updated VM status", "vm", vm.Name, "phase", vm.Status.Phase)
+	return nil
 }
 
 func (r *VirtualMachineReconciler) finalizeVM(ctx context.Context, vm *llmcloudv1alpha1.VirtualMachine) error {
