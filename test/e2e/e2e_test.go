@@ -310,7 +310,6 @@ metadata:
 spec:
   cpus: 1
   memory: "256Mi"
-  diskSize: "1Gi"
   os: cirros
   runStrategy: Always
 `, testVMName, testNamespace)

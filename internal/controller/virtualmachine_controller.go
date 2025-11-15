@@ -141,12 +141,6 @@ func (r *VirtualMachineReconciler) buildKubeVirtVM(vm *llmcloudv1alpha1.VirtualM
 				"bus": "virtio",
 			},
 		},
-		map[string]interface{}{
-			"name": "datadisk",
-			"disk": map[string]interface{}{
-				"bus": "virtio",
-			},
-		},
 	}
 	volumes := []interface{}{
 		map[string]interface{}{
@@ -155,12 +149,23 @@ func (r *VirtualMachineReconciler) buildKubeVirtVM(vm *llmcloudv1alpha1.VirtualM
 				"image": llmcloudv1alpha1.GetImageForOS(vm.Spec.OS, vm.Spec.OSVersion),
 			},
 		},
-		map[string]interface{}{
+	}
+
+	// Only add persistent disk if disk size is specified and > 0
+	// For demo/test images like cirros, we skip the persistent disk
+	if vm.Spec.DiskSize != "" && vm.Spec.DiskSize != "0" && vm.Spec.DiskSize != "0Gi" {
+		disks = append(disks, map[string]interface{}{
+			"name": "datadisk",
+			"disk": map[string]interface{}{
+				"bus": "virtio",
+			},
+		})
+		volumes = append(volumes, map[string]interface{}{
 			"name": "datadisk",
 			"dataVolume": map[string]interface{}{
 				"name": vm.Name + "-disk",
 			},
-		},
+		})
 	}
 
 	// Only add cloudInit if we have data
@@ -191,6 +196,54 @@ func (r *VirtualMachineReconciler) buildKubeVirtVM(vm *llmcloudv1alpha1.VirtualM
 		storageClass = "local-path"
 	}
 
+	// Build the VM spec
+	vmSpec := map[string]interface{}{
+		"runStrategy": runStrategy,
+		"template": map[string]interface{}{
+			"spec": map[string]interface{}{
+				"domain": map[string]interface{}{
+					"cpu": map[string]interface{}{
+						"cores": vm.Spec.CPUs,
+					},
+					"resources": map[string]interface{}{
+						"requests": map[string]interface{}{
+							"memory": vm.Spec.Memory,
+						},
+					},
+					"devices": map[string]interface{}{
+						"disks": disks,
+					},
+				},
+				"volumes": volumes,
+			},
+		},
+	}
+
+	// Only add dataVolumeTemplates if we have a persistent disk
+	if vm.Spec.DiskSize != "" && vm.Spec.DiskSize != "0" && vm.Spec.DiskSize != "0Gi" {
+		vmSpec["dataVolumeTemplates"] = []interface{}{
+			map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"name": vm.Name + "-disk",
+				},
+				"spec": map[string]interface{}{
+					"source": map[string]interface{}{
+						"blank": map[string]interface{}{},
+					},
+					"storage": map[string]interface{}{
+						"accessModes": []interface{}{"ReadWriteOnce"},
+						"resources": map[string]interface{}{
+							"requests": map[string]interface{}{
+								"storage": diskSize,
+							},
+						},
+						"storageClassName": storageClass,
+					},
+				},
+			},
+		}
+	}
+
 	kvVM := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "kubevirt.io/v1",
@@ -202,48 +255,7 @@ func (r *VirtualMachineReconciler) buildKubeVirtVM(vm *llmcloudv1alpha1.VirtualM
 					"llmcloud.io/managed": "true",
 				},
 			},
-			"spec": map[string]interface{}{
-				"runStrategy": runStrategy,
-				"dataVolumeTemplates": []interface{}{
-					map[string]interface{}{
-						"metadata": map[string]interface{}{
-							"name": vm.Name + "-disk",
-						},
-						"spec": map[string]interface{}{
-							"source": map[string]interface{}{
-								"blank": map[string]interface{}{},
-							},
-							"storage": map[string]interface{}{
-								"accessModes": []interface{}{"ReadWriteOnce"},
-								"resources": map[string]interface{}{
-									"requests": map[string]interface{}{
-										"storage": diskSize,
-									},
-								},
-								"storageClassName": storageClass,
-							},
-						},
-					},
-				},
-				"template": map[string]interface{}{
-					"spec": map[string]interface{}{
-						"domain": map[string]interface{}{
-							"cpu": map[string]interface{}{
-								"cores": vm.Spec.CPUs,
-							},
-							"resources": map[string]interface{}{
-								"requests": map[string]interface{}{
-									"memory": vm.Spec.Memory,
-								},
-							},
-							"devices": map[string]interface{}{
-								"disks": disks,
-							},
-						},
-						"volumes": volumes,
-					},
-				},
-			},
+			"spec": vmSpec,
 		},
 	}
 
