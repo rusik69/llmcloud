@@ -286,8 +286,25 @@ func (r *VirtualMachineReconciler) updateVMStatusFromVMI(ctx context.Context, vm
 	log.Info("Found VMI, updating status", "vm", vm.Name)
 
 	// Extract status from VMI
-	status, _, _ := unstructured.NestedMap(vmi.Object, "status")
-	if phase, ok := status["phase"].(string); ok {
+	status, found, err := unstructured.NestedMap(vmi.Object, "status")
+	if err != nil {
+		log.Error(err, "Failed to get status from VMI", "vm", vm.Name)
+		return err
+	}
+	if !found {
+		log.Info("VMI status not found yet, will retry", "vm", vm.Name)
+		vm.Status.Phase = llmcloudv1alpha1.PhasePending
+		vm.Status.Ready = false
+		return r.Status().Update(ctx, vm)
+	}
+
+	phase, ok := status["phase"].(string)
+	if !ok {
+		log.Info("VMI phase not available yet, setting to Pending", "vm", vm.Name, "status", status)
+		vm.Status.Phase = llmcloudv1alpha1.PhasePending
+		vm.Status.Ready = false
+	} else {
+		log.Info("Setting VM phase from VMI", "vm", vm.Name, "phase", phase)
 		vm.Status.Phase = phase
 		vm.Status.Ready = (phase == "Running")
 	}
