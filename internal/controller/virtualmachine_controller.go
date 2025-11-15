@@ -276,10 +276,18 @@ func (r *VirtualMachineReconciler) updateVMStatusFromVMI(ctx context.Context, vm
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("VMI not found, setting status to Pending", "vm", vm.Name)
-			vm.Status.Phase = llmcloudv1alpha1.PhasePending
-			vm.Status.Ready = false
-			log.Info("Updating VM status (VMI not found)", "vm", vm.Name, "phase", vm.Status.Phase)
-			err := r.Status().Update(ctx, vm)
+
+			// Re-fetch the VM to get the latest version before updating status
+			latestVM := &llmcloudv1alpha1.VirtualMachine{}
+			if err := r.Get(ctx, client.ObjectKey{Name: vm.Name, Namespace: vm.Namespace}, latestVM); err != nil {
+				log.Error(err, "Failed to re-fetch VM", "vm", vm.Name)
+				return err
+			}
+
+			latestVM.Status.Phase = llmcloudv1alpha1.PhasePending
+			latestVM.Status.Ready = false
+			log.Info("Updating VM status (VMI not found)", "vm", vm.Name, "phase", latestVM.Status.Phase)
+			err := r.Status().Update(ctx, latestVM)
 			if err != nil {
 				log.Error(err, "Failed to update VM status (VMI not found)", "vm", vm.Name)
 				return err
@@ -298,51 +306,59 @@ func (r *VirtualMachineReconciler) updateVMStatusFromVMI(ctx context.Context, vm
 		log.Error(err, "Failed to get status from VMI", "vm", vm.Name)
 		return err
 	}
+
+	// Re-fetch the VM to get the latest version before updating status
+	latestVM := &llmcloudv1alpha1.VirtualMachine{}
+	if err := r.Get(ctx, client.ObjectKey{Name: vm.Name, Namespace: vm.Namespace}, latestVM); err != nil {
+		log.Error(err, "Failed to re-fetch VM", "vm", vm.Name)
+		return err
+	}
+
 	if !found {
 		log.Info("VMI status not found yet, will retry", "vm", vm.Name)
-		vm.Status.Phase = llmcloudv1alpha1.PhasePending
-		vm.Status.Ready = false
-		return r.Status().Update(ctx, vm)
+		latestVM.Status.Phase = llmcloudv1alpha1.PhasePending
+		latestVM.Status.Ready = false
+		return r.Status().Update(ctx, latestVM)
 	}
 
 	phase, ok := status["phase"].(string)
 	if !ok {
 		log.Info("VMI phase not available yet, setting to Pending", "vm", vm.Name, "status", status)
-		vm.Status.Phase = llmcloudv1alpha1.PhasePending
-		vm.Status.Ready = false
+		latestVM.Status.Phase = llmcloudv1alpha1.PhasePending
+		latestVM.Status.Ready = false
 	} else {
 		log.Info("Setting VM phase from VMI", "vm", vm.Name, "phase", phase)
-		vm.Status.Phase = phase
-		vm.Status.Ready = (phase == "Running")
+		latestVM.Status.Phase = phase
+		latestVM.Status.Ready = (phase == "Running")
 	}
 
 	if node, ok := status["nodeName"].(string); ok {
-		vm.Status.Node = node
+		latestVM.Status.Node = node
 	}
 
 	if interfaces, ok := status["interfaces"].([]interface{}); ok && len(interfaces) > 0 {
 		if iface, ok := interfaces[0].(map[string]interface{}); ok {
 			if ip, ok := iface["ipAddress"].(string); ok {
-				vm.Status.IPAddress = ip
+				latestVM.Status.IPAddress = ip
 			}
 		}
 	}
 
-	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
+	meta.SetStatusCondition(&latestVM.Status.Conditions, metav1.Condition{
 		Type:               "Ready",
 		Status:             metav1.ConditionTrue,
 		Reason:             "VMRunning",
 		Message:            "Virtual machine is running",
-		ObservedGeneration: vm.Generation,
+		ObservedGeneration: latestVM.Generation,
 	})
 
-	log.Info("Updating VM status", "vm", vm.Name, "phase", vm.Status.Phase, "ready", vm.Status.Ready)
-	err = r.Status().Update(ctx, vm)
+	log.Info("Updating VM status", "vm", vm.Name, "phase", latestVM.Status.Phase, "ready", latestVM.Status.Ready)
+	err = r.Status().Update(ctx, latestVM)
 	if err != nil {
 		log.Error(err, "Failed to update VM status", "vm", vm.Name)
 		return err
 	}
-	log.Info("Successfully updated VM status", "vm", vm.Name, "phase", vm.Status.Phase)
+	log.Info("Successfully updated VM status", "vm", vm.Name, "phase", latestVM.Status.Phase)
 	return nil
 }
 
