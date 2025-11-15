@@ -321,7 +321,7 @@ spec:
 
 			By("verifying VirtualMachine CR was created")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace, "-o", "jsonpath={.metadata.name}")
+				cmd := exec.Command("kubectl", "get", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace, "-o", "jsonpath={.metadata.name}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal(testVMName))
@@ -329,7 +329,7 @@ spec:
 
 			By("waiting for VirtualMachine to be Running")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace, "-o", "jsonpath={.status.phase}")
+				cmd := exec.Command("kubectl", "get", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace, "-o", "jsonpath={.status.phase}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Or(Equal("Running"), Equal("Pending")), "VM should be Running or Pending")
@@ -337,7 +337,7 @@ spec:
 
 			By("verifying underlying KubeVirt VirtualMachine was created")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace, "-o", "json")
+				cmd := exec.Command("kubectl", "get", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace, "-o", "json")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("kubevirt.io"))
@@ -347,14 +347,14 @@ spec:
 		It("should stop a running VirtualMachine", func() {
 			By("updating VirtualMachine runStrategy to Halted")
 			patchJSON := `{"spec":{"runStrategy":"Halted"}}`
-			cmd := exec.Command("kubectl", "patch", "virtualmachine", testVMName, "-n", testNamespace,
+			cmd := exec.Command("kubectl", "patch", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace,
 				"--type=merge", "-p", patchJSON)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to patch VirtualMachine")
 
 			By("verifying VirtualMachine runStrategy was updated")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace,
+				cmd := exec.Command("kubectl", "get", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace,
 					"-o", "jsonpath={.spec.runStrategy}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -373,14 +373,14 @@ spec:
 		It("should start a stopped VirtualMachine", func() {
 			By("updating VirtualMachine runStrategy to Always")
 			patchJSON := `{"spec":{"runStrategy":"Always"}}`
-			cmd := exec.Command("kubectl", "patch", "virtualmachine", testVMName, "-n", testNamespace,
+			cmd := exec.Command("kubectl", "patch", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace,
 				"--type=merge", "-p", patchJSON)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to patch VirtualMachine")
 
 			By("verifying VirtualMachine runStrategy was updated")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace,
+				cmd := exec.Command("kubectl", "get", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace,
 					"-o", "jsonpath={.spec.runStrategy}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -389,7 +389,7 @@ spec:
 
 			By("verifying VirtualMachine is running again")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace,
+				cmd := exec.Command("kubectl", "get", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace,
 					"-o", "jsonpath={.status.phase}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -399,13 +399,13 @@ spec:
 
 		It("should delete a VirtualMachine successfully", func() {
 			By("deleting the VirtualMachine CR")
-			cmd := exec.Command("kubectl", "delete", "virtualmachine", testVMName, "-n", testNamespace)
+			cmd := exec.Command("kubectl", "delete", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete VirtualMachine")
 
 			By("verifying VirtualMachine CR was deleted")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "virtualmachine", testVMName, "-n", testNamespace)
+				cmd := exec.Command("kubectl", "get", "virtualmachine.llmcloud.llmcloud.io", testVMName, "-n", testNamespace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).To(HaveOccurred(), "VirtualMachine should be deleted")
 			}, 1*time.Minute, 2*time.Second).Should(Succeed())
